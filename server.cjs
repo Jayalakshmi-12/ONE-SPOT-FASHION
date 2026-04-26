@@ -17,14 +17,6 @@ app.use(cors());
 app.use(express.json()); // Parse JSON requests
 app.use(bodyParser.urlencoded({ extended: true }));
 
-// MySQL connection
-const db = mysql.createConnection({
-  host: process.env.DB_HOST || 'localhost',
-  user: process.env.DB_USER || 'root',
-  password: process.env.DB_PASSWORD || 'Jayalakshmibs35@',
-  database: process.env.DB_NAME || 'fashiondb',
-});
-
 db.connect((err) => {
   if (err) {
     console.error('❌ DB connection failed:', err.message);
@@ -54,124 +46,8 @@ app.get('/api/generate-userid', (req, res) => {
   res.json({ userid: uniqueId });
 });
 
-// Email sending function
-function sendWelcomeEmail(toEmail, userName) {
-  const transporter = nodemailer.createTransport({
-    service: 'gmail',
-    auth: {
-      user: process.env.EMAIL_USER,
-      pass: process.env.EMAIL_PASS,
-    },
-  });
 
-  const mailOptions = {
-    from: process.env.EMAIL_USER,
-    to: toEmail,
-    subject: 'Welcome to ONE SPOT FASHION!',
-    text: `Hi ${userName},
-
-Thanks for registering! We're excited to have you on board.
-
-As part of our services, you'll receive:
-- Personalized color analysis
-- Virtual Dressing
-- Attire recommendations
-- Face shape recognition
-- Haircut suggestions
-
-We can't wait to get started!
-
-Best regards,  
-The ONE SPOT FASHION Team`
-};
-
-
-  transporter.sendMail(mailOptions, (error, info) => {
-    if (error) {
-      console.error('❌ Email error:', error);
-    } else {
-      console.log('✅ Email sent:', info.response);
-    }
-  });
-}
-
-// POST /api/users - Create new user
-app.post('/api/users', async (req, res) => {
-  const { userId, name, gender, age, password, email } = req.body;
-
-  // Validate fields
-  if (!userId || !name || !gender || !password || !email) {
-    return res.status(400).json({ success: false, error: 'All fields are required' });
-  }
-
-  try {
-    // Check if email already exists in the database
-    db.query('SELECT * FROM users WHERE email = ?', [email], async (err, results) => {
-      if (err) {
-        console.error('❌ Error checking email:', err);
-        return res.status(500).json({ success: false, error: 'Database error', details: err });
-      }
-
-      if (results.length > 0) {
-        // Email already exists, send a message
-        return res.status(400).json({ success: false, error: 'User with this email already exists' });
-      }
-
-      // Hash the password
-      const hashedPassword = await bcrypt.hash(password, 10);
-
-      // SQL query to insert the new user into the database
-      const insertQuery = `
-        INSERT INTO users (userid, name, gender, age, password, email)
-        VALUES (?, ?, ?, ?, ?, ?)
-      `;
-
-      db.query(insertQuery, [userId, name, gender, age, hashedPassword, email], (err, result) => {
-        if (err) {
-          console.error('❌ Error inserting user:', err);
-          return res.status(500).json({ success: false, error: 'Database error', details: err });
-        }
-
-        console.log(`✅ User created with ID: ${result.insertId}`);
-
-        // Create a session after successful registration
-        const actionTime = getLocalDatetime();  // Use the local system time for action_time
-
-        // Insert the session into the user_sessions table
-        const insertSessionQuery = `
-          INSERT INTO user_sessions (userid, action_type, action_time)
-          VALUES (?, 'sign_up', ?)
-        `;
-
-        console.log(`Inserting sign-up session for user: ${userId} at ${actionTime}`);
-
-        db.query(insertSessionQuery, [userId, actionTime], (err, sessionResult) => {
-          if (err) {
-            console.error('❌ Error creating user session after sign-up:', err);
-            return res.status(500).json({ success: false, error: 'Session creation failed', details: err });
-          }
-
-          if (sessionResult && sessionResult.insertId) {
-            console.log(`✅ Sign-up session created successfully with ID: ${sessionResult.insertId}`);
-          } else {
-            console.error('❌ No session ID returned from insert operation');
-            return res.status(500).json({ success: false, error: 'Failed to create session' });
-          }
-
-          // Send the welcome email after successful registration
-          sendWelcomeEmail(email, name); // Send the email with the user's email and name
-
-          // Respond to the client that the user was successfully registered
-          res.json({ success: true, message: 'User registered successfully' });
-        });
-      });
-    });
-  } catch (err) {
-    console.error('❌ Error hashing password or inserting user:', err);
-    res.status(500).json({ success: false, error: 'Server error' });
-  }
-});
-
+/
 
 // POST /api/login - Login route
 app.post('/api/login', (req, res) => {
@@ -316,25 +192,3 @@ app.get('/start-analysis', (req, res) => {
       responded = true;
     }
   });
-
-  pyshell.on('error', (err) => {
-    console.error('Shell error:', err);
-    if (!responded) {
-      res.status(500).json({ message: 'Script failed', error: err.message });
-      responded = true;
-    }
-  });
-
-  pyshell.on('close', () => {
-    if (!responded) {
-      res.json({ message: 'Analysis script ran successfully!' });
-      responded = true;
-    }
-  });
-});
-
-
-// Start server
-app.listen(port, () => {
-  console.log(`🚀 Server running at http://localhost:${port}`);
-});
